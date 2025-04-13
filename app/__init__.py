@@ -1,6 +1,9 @@
 from flask import Flask
 from flask_sqlalchemy import SQLAlchemy
 from flask_migrate import Migrate
+from flask_wtf.csrf import CSRFProtect
+
+
 
 db = SQLAlchemy()
 migrate = Migrate()
@@ -8,15 +11,12 @@ migrate = Migrate()
 def create_app():
     app = Flask(__name__)
     
-    # Load configuration
     from app.config import Config
     app.config.from_object(Config)
     
-    # Initialize extensions
     db.init_app(app)
     migrate.init_app(app, db)
     
-    # Import and register routes AFTER initialization
     with app.app_context():
         from app.views import init_routes
         init_routes(app)
@@ -25,6 +25,8 @@ def create_app():
 
 app = create_app()
 
+csrf = CSRFProtect(app)
 
-# Import models AFTER app creation
+
+
 from app import models

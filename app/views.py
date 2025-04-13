@@ -38,7 +38,6 @@ def init_routes(app):
 
     @app.route('/api/v1/movies', methods=['POST'])
     def movies():
-        print("Request method:", request.method)
         form = MovieForm()
 
         if form.validate_on_submit():
@@ -65,6 +64,10 @@ def init_routes(app):
             }), 201
 
         return jsonify(errors=form_errors(form)), 400
+    
+    @app.route('/api/v1/csrf-token', methods=['GET'])
+    def get_csrf():
+        return jsonify({'csrf_token': generate_csrf()})
 
 # Keep your form_errors helper function
 def form_errors(form):
