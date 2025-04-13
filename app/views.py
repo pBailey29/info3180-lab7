@@ -5,79 +5,110 @@ Werkzeug Documentation:  https://werkzeug.palletsprojects.com/
 This file creates your application.
 """
 
-import os
+from flask import render_template, request, jsonify, send_file
 from werkzeug.utils import secure_filename
-from flask import render_template, request, jsonify, send_file, current_app
-from app.forms import MovieForm
+import os
+from app import app, db
 from app.models import Movie
-from app import db
+from app.forms import MovieForm
+from flask_wtf.csrf import generate_csrf
 
 
-def init_routes(app):
-    """Register all routes with the app"""
+###
+# Routing for your application.
+###
+ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif'}
 
-    @app.route('/')
-    def index():
-        return jsonify(message="This is the beginning of our API")
+def allowed_file(filename):
+    """Check if the file has an allowed extension"""
+    return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
-    @app.route('/<file_name>.txt')
-    def send_text_file(file_name):
-        file_dot_text = file_name + '.txt'
-        return app.send_static_file(file_dot_text)
+@app.route('/')
+def index():
+    return jsonify(message="This is the beginning of our API")
 
-    @app.after_request
-    def add_header(response):
-        response.headers['X-UA-Compatible'] = 'IE=Edge,chrome=1'
-        response.headers['Cache-Control'] = 'public, max-age=0'
-        return response
+@app.route('/api/v1/csrf-token', methods=['GET'])
+def get_csrf():
+    return jsonify({'csrf_token': generate_csrf()})
 
-    @app.errorhandler(404)
-    def page_not_found(error):
-        return render_template('404.html'), 404
+@app.route('/api/v1/movies', methods=['POST'])
+def movies():
+    try:
 
+        os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
 
-    @app.route('/api/v1/movies', methods=['POST'])
-    def movies():
-        form = MovieForm()
+        title = request.form.get('title')
+        description = request.form.get('description')
+        poster = request.files.get('poster')
 
-        if form.validate_on_submit():
-            # Get data
-            title = form.title.data
-            description = form.description.data
-            poster = form.poster.data
+        print("FILES:", request.files)
+        print("FORM:", request.form)
 
-            # Save file
-            filename = secure_filename(poster.filename)
-            upload_path = os.path.join(current_app.config['UPLOAD_FOLDER'], filename)
-            poster.save(upload_path)
+        if not title or not description or not poster:
+            return jsonify({"errors": {"form": ["Missing required fields."]}}), 400
 
-            # Save to DB
-            movie = Movie(title=title, description=description, poster=filename)
-            db.session.add(movie)
-            db.session.commit()
+        if not allowed_file(poster.filename):
+            return jsonify({"errors": {"poster": ["File type not allowed."]}}), 400
 
-            return jsonify({
-                "message": "Movie Successfully added",
-                "title": title,
-                "poster": filename,
-                "description": description
-            }), 201
+        filename = secure_filename(poster.filename)
+        upload_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+        print("Uploading to:", upload_path)
+        poster.save(upload_path)
 
-        return jsonify(errors=form_errors(form)), 400
+        movie = Movie(title=title, description=description, poster=filename)
+        db.session.add(movie)
+        db.session.commit()
+
+        return jsonify({
+            "message": "Movie successfully added",
+            "title": title,
+            "poster": filename,
+            "description": description
+        }), 201
     
-    @app.route('/api/v1/csrf-token', methods=['GET'])
-    def get_csrf():
-        return jsonify({'csrf_token': generate_csrf()})
+    except Exception as e:
+        print("Exception occurred:", str(e))
+        return jsonify({"errors": {"server": [str(e)]}}), 500
 
-# Keep your form_errors helper function
+###
+# The functions below should be applicable to all Flask apps.
+###
+
+# Here we define a function to collect form errors from Flask-WTF
+# which we can later use
 def form_errors(form):
     error_messages = []
+    """Collects form errors"""
     for field, errors in form.errors.items():
         for error in errors:
             message = u"Error in the %s field - %s" % (
-                getattr(form, field).label.text,
-                error
-            )
+                    getattr(form, field).label.text,
+                    error
+                )
             error_messages.append(message)
+
     return error_messages
 
+@app.route('/<file_name>.txt')
+def send_text_file(file_name):
+    """Send your static text file."""
+    file_dot_text = file_name + '.txt'
+    return app.send_static_file(file_dot_text)
+
+
+@app.after_request
+def add_header(response):
+    """
+    Add headers to both force latest IE rendering engine or Chrome Frame,
+    and also tell the browser not to cache the rendered page. If we wanted
+    to we could change max-age to 600 seconds which would be 10 minutes.
+    """
+    response.headers['X-UA-Compatible'] = 'IE=Edge,chrome=1'
+    response.headers['Cache-Control'] = 'public, max-age=0'
+    return response
+
+
+@app.errorhandler(404)
+def page_not_found(error):
+    """Custom 404 page."""
+    return render_template('404.html'), 404
