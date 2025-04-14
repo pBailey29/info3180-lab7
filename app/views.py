@@ -5,7 +5,7 @@ Werkzeug Documentation:  https://werkzeug.palletsprojects.com/
 This file creates your application.
 """
 
-from flask import render_template, request, jsonify, send_file
+from flask import render_template, request, jsonify, send_file, send_from_directory
 from werkzeug.utils import secure_filename
 import os
 from app import app, db
@@ -69,6 +69,26 @@ def movies():
     except Exception as e:
         print("Exception occurred:", str(e))
         return jsonify({"errors": {"server": [str(e)]}}), 500
+    
+@app.route('/api/v1/movies', methods=['GET'])
+def get_movies():
+    movies = Movie.query.all()
+    movie_list = []
+
+    for movie in movies:
+        movie_list.append({
+            "id": movie.id,
+            "title": movie.title,
+            "description": movie.description,
+            "poster": f"/api/v1/posters/{movie.poster}"
+        })
+
+    return jsonify({"movies": movie_list})
+
+@app.route('/api/v1/posters/<filename>')
+def get_poster(filename):
+    uploads_path = os.path.join(os.getcwd(), 'uploads')
+    return send_from_directory(uploads_path, filename)
 
 ###
 # The functions below should be applicable to all Flask apps.
